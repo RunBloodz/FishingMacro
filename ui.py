@@ -1,64 +1,57 @@
 from PyQt6.QtWidgets import (
-    QApplication, QWidget, QPushButton,
-    QLabel, QVBoxLayout, QHBoxLayout
+    QApplication, QWidget, QPushButton, QLabel,
+    QVBoxLayout, QHBoxLayout
 )
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QFont
-import sys
-
 from macro import MacroController
-from updater import check_update
-
+from updater import check_for_update
+import sys
 
 class FishingMacroUI:
     def __init__(self):
         self.app = QApplication(sys.argv)
-        self.window = QWidget()
-        self.window.setWindowTitle("FishingMacro ULTRA")
-        self.window.resize(900, 500)
+        self.win = QWidget()
+        self.win.setWindowTitle("FishingMacro ULTRA")
+        self.win.resize(900, 500)
 
-        self.window.setStyleSheet("""
-            QWidget {
-                background-color: #121212;
-                color: #eaeaea;
-                font-family: Segoe UI;
-            }
+        self.win.setStyleSheet("""
+            QWidget { background:#0f1117; color:#e5e7eb; }
             QPushButton {
-                background-color: #1f1f1f;
-                border-radius: 12px;
-                padding: 12px;
-                font-size: 14px;
+                background:#1f2937;
+                border-radius:10px;
+                padding:12px;
+                font-size:14px;
             }
-            QPushButton:hover {
-                background-color: #2c2c2c;
-            }
+            QPushButton:hover { background:#374151; }
+            QLabel { font-size:16px; }
         """)
 
         self.macro = MacroController()
 
         layout = QVBoxLayout()
 
-        title = QLabel("FishingMacro ULTRA")
-        title.setFont(QFont("Segoe UI", 22, QFont.Weight.Bold))
+        title = QLabel("🎣 FishingMacro ULTRA")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title.setStyleSheet("font-size:26px;")
+        layout.addWidget(title)
 
-        start = QPushButton("START")
-        stop = QPushButton("STOP")
+        btns = QHBoxLayout()
+
+        start = QPushButton("START (F2)")
+        stop = QPushButton("STOP (F3)")
         update = QPushButton("CHECK UPDATE")
 
         start.clicked.connect(self.macro.start)
         stop.clicked.connect(self.macro.stop)
-        update.clicked.connect(check_update)
+        update.clicked.connect(check_for_update)
 
-        layout.addWidget(title)
-        layout.addStretch()
-        layout.addWidget(start)
-        layout.addWidget(stop)
-        layout.addWidget(update)
-        layout.addStretch()
+        btns.addWidget(start)
+        btns.addWidget(stop)
+        btns.addWidget(update)
 
-        self.window.setLayout(layout)
+        layout.addLayout(btns)
+        self.win.setLayout(layout)
 
     def run(self):
-        self.window.show()
+        self.win.show()
         sys.exit(self.app.exec())

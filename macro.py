@@ -1,7 +1,6 @@
 import threading
 import time
 
-
 class MacroController:
     def __init__(self):
         self.running = False
@@ -13,13 +12,12 @@ class MacroController:
         self.running = True
         self.thread = threading.Thread(target=self.loop, daemon=True)
         self.thread.start()
-        print("Macro started")
 
     def stop(self):
         self.running = False
-        print("Macro stopped")
 
     def loop(self):
         while self.running:
-            # Placeholder logic
-            time.sleep(0.02)
+            # SAFE PLACEHOLDER
+            print("Macro running...")
+            time.sleep(0.1)

@@ -1,14 +1,18 @@
 import json
-from pathlib import Path
+import os
+import sys
 
-CONFIG = Path("config.json")
+def path(file):
+    base = getattr(sys, '_MEIPASS', os.getcwd())
+    return os.path.join(base, file)
 
-
-def save(data):
-    CONFIG.write_text(json.dumps(data, indent=2))
-
+def save(cfg):
+    with open(path("config.json"), "w") as f:
+        json.dump(cfg, f, indent=2)
 
 def load():
-    if not CONFIG.exists():
+    try:
+        with open(path("config.json")) as f:
+            return json.load(f)
+    except:
         return {}
-    return json.loads(CONFIG.read_text())

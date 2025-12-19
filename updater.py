@@ -1,25 +1,22 @@
 import requests
-import pathlib
+import os
+import sys
 
-VERSION_FILE = "version.txt"
-GITHUB_VERSION_URL = "https://raw.githubusercontent.com/RunBloodz/FishingMacro/main/version.txt"
+REPO = "RunBloodz/FishingMacro"
+RAW = f"https://raw.githubusercontent.com/{REPO}/main"
 
+def app_path(file):
+    base = getattr(sys, '_MEIPASS', os.getcwd())
+    return os.path.join(base, file)
 
-def get_local_version():
-    if not pathlib.Path(VERSION_FILE).exists():
-        return "0.0.0"
-    return pathlib.Path(VERSION_FILE).read_text().strip()
-
-
-def check_update():
+def check_for_update():
     try:
-        online = requests.get(GITHUB_VERSION_URL, timeout=5).text.strip()
-        local = get_local_version()
+        remote = requests.get(f"{RAW}/version.txt", timeout=3).text.strip()
+        local = open(app_path("version.txt")).read().strip()
 
-        if online != local:
-            print(f"Update available: {local} → {online}")
+        if remote != local:
+            print("Update available:", remote)
         else:
-            print("You are up to date")
-
+            print("Up to date")
     except Exception as e:
-        print("Update check failed:", e)
+        print("Updater error:", e)
