@@ -1,11 +1,11 @@
 @echo off
-echo Building FishingMacro EXE...
+echo Building EXE...
 
-py -3.11 -m pip install -r requirements.txt
 py -3.11 -m PyInstaller ^
- --onefile ^
- --noconsole ^
- --name FishingMacro ^
- main.py
+--onefile ^
+--noconsole ^
+--add-data "version.txt;." ^
+--name FishingMacro ^
+main.py
 
 pause

@@ -1,57 +1,42 @@
-from PyQt6.QtWidgets import (
-    QApplication, QWidget, QPushButton, QLabel,
-    QVBoxLayout, QHBoxLayout
-)
-from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import QWidget, QPushButton, QVBoxLayout, QLabel
+from PyQt6.QtGui import QFont
 from macro import MacroController
-from updater import check_for_update
-import sys
 
-class FishingMacroUI:
+class FishingUI(QWidget):
     def __init__(self):
-        self.app = QApplication(sys.argv)
-        self.win = QWidget()
-        self.win.setWindowTitle("FishingMacro ULTRA")
-        self.win.resize(900, 500)
-
-        self.win.setStyleSheet("""
-            QWidget { background:#0f1117; color:#e5e7eb; }
-            QPushButton {
-                background:#1f2937;
-                border-radius:10px;
-                padding:12px;
-                font-size:14px;
+        super().__init__()
+        self.setWindowTitle("FishingMacro ULTRA")
+        self.setFixedSize(420, 320)
+        self.setStyleSheet("""
+            QWidget {
+                background-color: #121212;
+                color: #ffffff;
             }
-            QPushButton:hover { background:#374151; }
-            QLabel { font-size:16px; }
+            QPushButton {
+                background-color: #1f1f1f;
+                border-radius: 10px;
+                padding: 12px;
+            }
+            QPushButton:hover {
+                background-color: #2a2a2a;
+            }
         """)
 
         self.macro = MacroController()
 
         layout = QVBoxLayout()
 
-        title = QLabel("🎣 FishingMacro ULTRA")
-        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        title.setStyleSheet("font-size:26px;")
+        title = QLabel("FishingMacro ULTRA")
+        title.setFont(QFont("Segoe UI", 20))
         layout.addWidget(title)
 
-        btns = QHBoxLayout()
-
-        start = QPushButton("START (F2)")
-        stop = QPushButton("STOP (F3)")
-        update = QPushButton("CHECK UPDATE")
+        start = QPushButton("START")
+        stop = QPushButton("STOP")
 
         start.clicked.connect(self.macro.start)
         stop.clicked.connect(self.macro.stop)
-        update.clicked.connect(check_for_update)
 
-        btns.addWidget(start)
-        btns.addWidget(stop)
-        btns.addWidget(update)
+        layout.addWidget(start)
+        layout.addWidget(stop)
 
-        layout.addLayout(btns)
-        self.win.setLayout(layout)
-
-    def run(self):
-        self.win.show()
-        sys.exit(self.app.exec())
+        self.setLayout(layout)
