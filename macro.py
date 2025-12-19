@@ -21,3 +21,4 @@ class MacroController:
             # SAFE PLACEHOLDER
             print("Macro running...")
             time.sleep(0.1)
+# macro placeholder
