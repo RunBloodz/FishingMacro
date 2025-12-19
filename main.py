@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 import sys
 from ui import FishingUI
 from updater import check_update
@@ -14,3 +15,10 @@ if __name__ == "__main__":
     win = FishingUI()
     win.show()
     sys.exit(app.exec())
+=======
+from ui import FishingMacroUI
+
+if __name__ == "__main__":
+    app = FishingMacroUI()
+    app.run()
+>>>>>>> 421cea7cdfa2bb317814615a282dcb5f05bed511

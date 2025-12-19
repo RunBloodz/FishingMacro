@@ -1,4 +1,8 @@
 dist/
 build/
+<<<<<<< HEAD
 __pycache__/
 *.spec
+=======
+*.exe
+>>>>>>> 421cea7cdfa2bb317814615a282dcb5f05bed511
