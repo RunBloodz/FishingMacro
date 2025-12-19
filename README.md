@@ -1,20 +1,12 @@
-# 🎣 FishingMacro
+# 🎣 FishingMacro ULTRA
 
-Advanced fishing automation macro with:
-- PID-based bar tracking
-- Debug overlay
-- Auto-updater
-- Config save/load
-- EXE build support
+A modern fishing macro framework with:
+- Dark UI
+- Safe threading
+- EXE support
+- GitHub updater ready
 
-## 📦 Features
-- Start / Stop macro
-- Smooth fish tracking
-- Debug visualization
-- Auto-update from GitHub
-- Single EXE deployment
-
-## ▶ How to Run (Python)
+## How to Run
 ```bash
-pip install -r requirements.txt
-python main.py
+py main.py
+  
