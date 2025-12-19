@@ -2,6 +2,8 @@
 from PyQt6.QtWidgets import QWidget, QPushButton, QVBoxLayout, QLabel
 from PyQt6.QtGui import QFont
 from macro import MacroController
+from PyQt6.QtWidgets import QProgressBar
+from updater import Updater
 
 class FishingUI(QWidget):
     def __init__(self):
