@@ -1,36 +1,25 @@
-import requests, os, sys, shutil, subprocess
-import os
 import requests
+import pathlib
 
 VERSION_FILE = "version.txt"
+GITHUB_VERSION_URL = "https://raw.githubusercontent.com/RunBloodz/FishingMacro/main/version.txt"
+
 
 def get_local_version():
-    if not os.path.exists(VERSION_FILE):
+    if not pathlib.Path(VERSION_FILE).exists():
         return "0.0.0"
-    with open(VERSION_FILE, "r") as f:
-        return f.read().strip()
+    return pathlib.Path(VERSION_FILE).read_text().strip()
 
-REPO = "RunBloodz/FishingMacro"
-EXE_NAME = "FishingMacro.exe"
-VERSION_URL = f"https://raw.githubusercontent.com/{REPO}/main/version.txt"
-EXE_URL = f"https://github.com/{REPO}/releases/latest/download/{EXE_NAME}"
 
-def update():
-    local = open("version.txt").read().strip()
-    remote = requests.get(VERSION_URL).text.strip()
+def check_update():
+    try:
+        online = requests.get(GITHUB_VERSION_URL, timeout=5).text.strip()
+        local = get_local_version()
 
-    if local == remote:
-        return
+        if online != local:
+            print(f"Update available: {local} → {online}")
+        else:
+            print("You are up to date")
 
-    print("Updating...")
-    r = requests.get(EXE_URL, stream=True)
-    with open("new.exe", "wb") as f:
-        for c in r.iter_content(1024):
-            f.write(c)
-
-    os.replace("new.exe", EXE_NAME)
-    open("version.txt", "w").write(remote)
-    subprocess.Popen([EXE_NAME])
-    sys.exit()
-
-update()
+    except Exception as e:
+        print("Update check failed:", e)

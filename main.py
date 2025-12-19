@@ -1,9 +1,5 @@
-import updater
-from PyQt6.QtWidgets import QApplication, QLabel
-import sys
+from ui import FishingMacroUI
 
-app = QApplication(sys.argv)
-w = QLabel("FishingMacro Running")
-w.resize(300, 100)
-w.show()
-sys.exit(app.exec())
+if __name__ == "__main__":
+    app = FishingMacroUI()
+    app.run()
