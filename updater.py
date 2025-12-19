@@ -1,26 +1,22 @@
-import requests, os, sys, shutil, subprocess
+import requests
+import os
+import sys
 
-REPO = "YOURNAME/FishingMacro"
-EXE_NAME = "FishingMacro.exe"
-VERSION_URL = f"https://raw.githubusercontent.com/{REPO}/main/version.txt"
-EXE_URL = f"https://github.com/{REPO}/releases/latest/download/{EXE_NAME}"
+REPO = "RunBloodz/FishingMacro"
+RAW = f"https://raw.githubusercontent.com/{REPO}/main"
 
-def update():
-    local = open("version.txt").read().strip()
-    remote = requests.get(VERSION_URL).text.strip()
+def app_path(file):
+    base = getattr(sys, '_MEIPASS', os.getcwd())
+    return os.path.join(base, file)
 
-    if local == remote:
-        return
+def check_for_update():
+    try:
+        remote = requests.get(f"{RAW}/version.txt", timeout=3).text.strip()
+        local = open(app_path("version.txt")).read().strip()
 
-    print("Updating...")
-    r = requests.get(EXE_URL, stream=True)
-    with open("new.exe", "wb") as f:
-        for c in r.iter_content(1024):
-            f.write(c)
-
-    os.replace("new.exe", EXE_NAME)
-    open("version.txt", "w").write(remote)
-    subprocess.Popen([EXE_NAME])
-    sys.exit()
-
-update()
+        if remote != local:
+            print("Update available:", remote)
+        else:
+            print("Up to date")
+    except Exception as e:
+        print("Updater error:", e)
