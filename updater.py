@@ -1,6 +1,16 @@
 import requests, os, sys, shutil, subprocess
+import os
+import requests
 
-REPO = "YOURNAME/FishingMacro"
+VERSION_FILE = "version.txt"
+
+def get_local_version():
+    if not os.path.exists(VERSION_FILE):
+        return "0.0.0"
+    with open(VERSION_FILE, "r") as f:
+        return f.read().strip()
+
+REPO = "RunBloodz/FishingMacro"
 EXE_NAME = "FishingMacro.exe"
 VERSION_URL = f"https://raw.githubusercontent.com/{REPO}/main/version.txt"
 EXE_URL = f"https://github.com/{REPO}/releases/latest/download/{EXE_NAME}"
