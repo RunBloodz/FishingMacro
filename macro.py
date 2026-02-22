@@ -67,7 +67,9 @@ class MacroController:
                 # 2. Cast
                 print("Casting rod...")
                 self.mouse_ctrl.click(mouse.Button.left)
-                time.sleep(1.5)
+                time.sleep(0.8)
+                self.mouse_ctrl.click(mouse.Button.left)
+                time.sleep(1.0)
 
                 # 3. Wait for Exclamation
                 print("Waiting for bite...")
@@ -83,8 +85,8 @@ class MacroController:
                 if bite_detected:
                     print("Bite detected! Clicking...")
                     self.mouse_ctrl.click(mouse.Button.left)
-                    # Wait for minigame UI to appear (user requested a longer delay)
-                    time.sleep(1.2)
+                    # Wait for minigame UI to appear (user requested 3s delay)
+                    time.sleep(3.0)
 
                     self.run_minigame()
                 else:
