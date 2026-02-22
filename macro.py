@@ -83,7 +83,8 @@ class MacroController:
                 if bite_detected:
                     print("Bite detected! Clicking...")
                     self.mouse_ctrl.click(mouse.Button.left)
-                    time.sleep(0.6) # Wait for minigame UI
+                    # Wait for minigame UI to appear (user requested a longer delay)
+                    time.sleep(1.2)
 
                     self.run_minigame()
                 else:
