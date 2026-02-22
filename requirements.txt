@@ -1,1 +1,8 @@
-requests
+# Requirements for Blox Fruits Fishing Macro
+PyQt6
+pyautogui
+mss
+numpy
+pynput
+keyboard
+pillow
