@@ -146,6 +146,10 @@ class MacroController:
                     if fish_x != -1 and catcher_x != -1 and chest_x != -1:
                         break
 
+                # If catcher not found by color, it might be exactly over the background
+                # This could happen if the catcher is dark gray or has a similar color.
+                # But typically the catcher is a distinct object.
+
                 if fish_x == -1 and catcher_x == -1 and chest_x == -1:
                     # Check if game ended (no relevant colors found at all)
                     time.sleep(0.1)

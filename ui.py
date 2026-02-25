@@ -55,8 +55,8 @@ class FishingUI(QWidget):
         btn_excl.clicked.connect(lambda: self.start_picking("exclamation"))
         cal_layout.addWidget(btn_excl)
 
-        btn_bar = QPushButton("Set Minigame Bar (Start & End)")
-        btn_bar.clicked.connect(lambda: self.start_picking("bar"))
+        btn_bar = QPushButton("Set Minigame Bar (Auto-Detect)")
+        btn_bar.clicked.connect(lambda: self.start_picking("bar_auto"))
         cal_layout.addWidget(btn_bar)
 
         btn_fish = QPushButton("Set Fish Color")
@@ -137,16 +137,36 @@ class FishingUI(QWidget):
                 self.status_signal.emit(f"Set Exclamation: {int(x)},{int(y)} Color: {color}")
                 self.finish_picking()
 
-            elif self.picking_mode == "bar":
-                if self.click_count == 0:
-                    self.config['minigame_bar_x_start'] = int(x)
-                    self.config['minigame_bar_y'] = int(y)
-                    self.click_count += 1
-                    self.status_signal.emit("Click the END of the bar...")
-                else:
-                    self.config['minigame_bar_x_end'] = int(x)
-                    self.status_signal.emit(f"Set Bar: {self.config['minigame_bar_x_start']} to {int(x)} at Y={int(y)}")
-                    self.finish_picking()
+            elif self.picking_mode == "bar_auto":
+                # Auto detect bar edges based on background color
+                self.status_signal.emit("Scanning for bar edges...")
+                y_int = int(y)
+                x_int = int(x)
+                bg_color = color
+                self.config['bar_bg_color'] = list(bg_color)
+                self.config['minigame_bar_y'] = y_int
+
+                # Scan left
+                x_start = x_int
+                while x_start > 0:
+                    c = self.get_color_at(x_start - 1, y_int)
+                    if not self.macro.is_color_match(c, bg_color, 15): # Strict tolerance for background
+                        break
+                    x_start -= 1
+
+                # Scan right
+                x_end = x_int
+                # Assuming max screen width 4000
+                while x_end < 4000:
+                    c = self.get_color_at(x_end + 1, y_int)
+                    if not self.macro.is_color_match(c, bg_color, 15):
+                        break
+                    x_end += 1
+
+                self.config['minigame_bar_x_start'] = x_start
+                self.config['minigame_bar_x_end'] = x_end
+                self.status_signal.emit(f"Detected Bar: {x_start} to {x_end} at Y={y_int}")
+                self.finish_picking()
 
             elif self.picking_mode == "fish":
                 self.config['fish_color'] = list(color)

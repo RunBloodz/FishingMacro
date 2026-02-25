@@ -15,6 +15,7 @@ DEFAULT_CONFIG = {
     "fish_color": [0, 0, 255], # Blue
     "catcher_color": [211, 211, 211], # Light Gray
     "chest_color": [255, 215, 0], # Gold/Yellow
+    "bar_bg_color": [50, 50, 50], # Dark Gray
     "tolerance": 20
 }
 
