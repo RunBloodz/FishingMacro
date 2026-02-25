@@ -14,6 +14,7 @@ DEFAULT_CONFIG = {
     "minigame_bar_x_end": 0,
     "fish_color": [0, 0, 255], # Blue
     "catcher_color": [211, 211, 211], # Light Gray
+    "chest_color": [255, 215, 0], # Gold/Yellow
     "tolerance": 20
 }
 

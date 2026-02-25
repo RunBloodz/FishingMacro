@@ -127,12 +127,9 @@ class MacroController:
 
                 fish_x = -1
                 catcher_x = -1
+                chest_x = -1
 
-                # Scan for fish and catcher
-                # Use numpy for faster searching if possible, or just a loop
-                # data[0, x] is [B, G, R, A]
-
-                # Optimized scan
+                # Scan for fish, catcher, and chest
                 for x in range(0, width, 3):
                     b, g, r = data[0, x][:3]
                     rgb = (r, g, b)
@@ -143,28 +140,35 @@ class MacroController:
                     if catcher_x == -1 and self.is_color_match(rgb, self.config['catcher_color'], self.config['tolerance']):
                         catcher_x = x
 
-                    if fish_x != -1 and catcher_x != -1:
+                    if chest_x == -1 and self.is_color_match(rgb, self.config['chest_color'], self.config['tolerance']):
+                        chest_x = x
+
+                    if fish_x != -1 and catcher_x != -1 and chest_x != -1:
                         break
 
-                if fish_x == -1 and catcher_x == -1:
-                    # Check if game ended (no colors found at all)
-                    # We look for ANY fish/catcher color in the whole bar more thoroughly
+                if fish_x == -1 and catcher_x == -1 and chest_x == -1:
+                    # Check if game ended (no relevant colors found at all)
                     time.sleep(0.1)
                     img_verify = sct.grab(monitor)
                     data_v = np.array(img_verify)
                     found = False
                     for x in range(0, width, 5):
                         b, g, r = data_v[0, x][:3]
-                        if self.is_color_match((r, g, b), self.config['fish_color'], self.config['tolerance']) or \
-                           self.is_color_match((r, g, b), self.config['catcher_color'], self.config['tolerance']):
+                        rgb_v = (r, g, b)
+                        if self.is_color_match(rgb_v, self.config['fish_color'], self.config['tolerance']) or \
+                           self.is_color_match(rgb_v, self.config['catcher_color'], self.config['tolerance']) or \
+                           self.is_color_match(rgb_v, self.config['chest_color'], self.config['tolerance']):
                             found = True
                             break
                     if not found:
-                        print("Minigame ended (bars disappeared).")
+                        print("Minigame ended.")
                         break
 
-                if fish_x != -1 and catcher_x != -1:
-                    if fish_x > catcher_x:
+                # Priority Logic: Chest > Fish
+                target_x = chest_x if chest_x != -1 else fish_x
+
+                if target_x != -1 and catcher_x != -1:
+                    if target_x > catcher_x:
                         if not mouse_down:
                             self.mouse_ctrl.press(mouse.Button.left)
                             mouse_down = True

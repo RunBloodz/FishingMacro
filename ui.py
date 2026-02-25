@@ -67,6 +67,10 @@ class FishingUI(QWidget):
         btn_catcher.clicked.connect(lambda: self.start_picking("catcher"))
         cal_layout.addWidget(btn_catcher)
 
+        btn_chest = QPushButton("Set Chest Color (Yellow)")
+        btn_chest.clicked.connect(lambda: self.start_picking("chest"))
+        cal_layout.addWidget(btn_chest)
+
         cal_group.setLayout(cal_layout)
         layout.addWidget(cal_group)
 
@@ -152,6 +156,11 @@ class FishingUI(QWidget):
             elif self.picking_mode == "catcher":
                 self.config['catcher_color'] = list(color)
                 self.status_signal.emit(f"Set Catcher Color: {color}")
+                self.finish_picking()
+
+            elif self.picking_mode == "chest":
+                self.config['chest_color'] = list(color)
+                self.status_signal.emit(f"Set Chest Color: {color}")
                 self.finish_picking()
 
     def finish_picking(self):
