@@ -50,7 +50,10 @@ class CalibrationOverlay(QWidget):
         # Background screenshot
         self.bg_label = QLabel(self)
         self.bg_label.setPixmap(pixmap)
-        self.bg_label.setGeometry(0, 0, pixmap.width(), pixmap.height())
+        # Use logical screen geometry for the label
+        screen_geo = QApplication.primaryScreen().geometry()
+        self.bg_label.setGeometry(0, 0, screen_geo.width(), screen_geo.height())
+        self.bg_label.setScaledContents(True) # Ensure it fits logical space
         self.pixmap = pixmap
 
         # Resizable Frame
@@ -91,13 +94,20 @@ class CalibrationOverlay(QWidget):
 
     def on_confirm(self):
         rect = self.frame.geometry()
-        center_x = rect.center().x()
-        center_y = rect.center().y()
+        ratio = self.devicePixelRatioF()
+
+        # Convert logical center to physical center for mss
+        center_x = int(rect.center().x() * ratio)
+        center_y = int(rect.center().y() * ratio)
 
         image = self.pixmap.toImage()
-        # Ensure coordinates are within image bounds
-        safe_x = max(0, min(center_x, image.width() - 1))
-        safe_y = max(0, min(center_y, image.height() - 1))
+        # Sampling color from the pixmap (which is already at the correct resolution if grabbed via Qt)
+        # However, to be safe, we sample using the logical coordinates * ratio
+        sample_x = int(rect.center().x() * image.devicePixelRatio())
+        sample_y = int(rect.center().y() * image.devicePixelRatio())
+
+        safe_x = max(0, min(sample_x, image.width() - 1))
+        safe_y = max(0, min(sample_y, image.height() - 1))
 
         qcolor = image.pixelColor(safe_x, safe_y)
         color = (qcolor.red(), qcolor.green(), qcolor.blue())
@@ -203,29 +213,32 @@ class FishingUI(QWidget):
         self.macro.update_config()
 
     def get_screenshot(self):
-        with mss.mss() as sct:
-            monitor = sct.monitors[1]
-            sct_img = sct.grab(monitor)
-            img = QImage(sct_img.raw, sct_img.width, sct_img.height, QImage.Format.Format_ARGB32)
-            return QPixmap.fromImage(img)
+        screen = QApplication.primaryScreen()
+        if not screen:
+            return QPixmap()
+        # grabWindow(0) handles High DPI scaling correctly on most systems
+        return screen.grabWindow(0)
 
     def start_picking(self, mode):
         self.picking_mode = mode
         self.status_signal.emit(f"Adjust frame for {mode}...")
 
         pixmap = self.get_screenshot()
+        # High DPI fix: label should match logical screen size, not physical pixmap size
+        screen_geo = QApplication.primaryScreen().geometry()
 
-        initial_rect = QRect(200, 200, 100, 100)
+        initial_rect = QRect(screen_geo.width()//2 - 75, screen_geo.height()//2 - 25, 150, 50)
         if mode == "bar_auto":
-            initial_rect = QRect(200, 400, 400, 40)
+            initial_rect = QRect(screen_geo.width()//2 - 200, screen_geo.height() - 250, 400, 40)
         elif mode == "exclamation":
-            initial_rect = QRect(pixmap.width()//2 - 25, pixmap.height()//2 - 100, 50, 50)
+            initial_rect = QRect(screen_geo.width()//2 - 25, screen_geo.height()//2 - 100, 50, 50)
 
         self.overlay = CalibrationOverlay(pixmap, initial_rect)
         self.overlay.confirmed_signal.connect(self.handle_confirmed_calibration)
         self.overlay.show()
 
     def handle_confirmed_calibration(self, x, y, color, rect):
+        # x, y here are already PHYSICAL coordinates for mss
         if self.picking_mode == "exclamation":
             self.config['exclamation_pos'] = [x, y]
             self.config['exclamation_color'] = list(color)
@@ -235,21 +248,27 @@ class FishingUI(QWidget):
             self.status_signal.emit("Scanning for bar edges...")
             bg_color = color
             self.config['bar_bg_color'] = list(bg_color)
-            self.config['minigame_bar_y'] = y
+            self.config['minigame_bar_y'] = y # Physical Y
 
             image = self.overlay.pixmap.toImage()
-            # Scan from frame boundaries first, then continue if color matches
-            x_start = rect.left()
+            ratio = self.overlay.devicePixelRatioF()
+
+            # Scan using physical coordinates on the image
+            # rect is logical, convert to physical
+            x_start_phys = int(rect.left() * ratio)
+            y_phys = y
+
+            x_start = x_start_phys
             while x_start > 0:
-                qc = image.pixelColor(x_start - 1, y)
+                qc = image.pixelColor(x_start - 1, y_phys)
                 c = (qc.red(), qc.green(), qc.blue())
                 if not self.macro.is_color_match(c, bg_color, 15):
                     break
                 x_start -= 1
 
-            x_end = rect.right()
+            x_end = int(rect.right() * ratio)
             while x_end < image.width() - 1:
-                qc = image.pixelColor(x_end + 1, y)
+                qc = image.pixelColor(x_end + 1, y_phys)
                 c = (qc.red(), qc.green(), qc.blue())
                 if not self.macro.is_color_match(c, bg_color, 15):
                     break
