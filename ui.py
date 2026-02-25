@@ -1,15 +1,48 @@
 import sys
 import threading
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
-                             QLabel, QLineEdit, QFormLayout, QGroupBox, QMessageBox)
-from PyQt6.QtCore import Qt, pyqtSignal, QTimer
-from pynput import mouse, keyboard
+                             QLabel, QLineEdit, QFormLayout, QGroupBox, QMessageBox, QApplication)
+from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QPoint
+from PyQt6.QtGui import QPixmap, QImage, QCursor
+from pynput import keyboard
 import mss
+import numpy as np
 from config import load_config, save_config
 from macro import MacroController
 
+class CalibrationOverlay(QWidget):
+    # Signal: x, y, (r, g, b)
+    clicked_signal = pyqtSignal(int, int, tuple)
+
+    def __init__(self, pixmap):
+        super().__init__()
+        self.setWindowFlags(Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.FramelessWindowHint)
+        self.setWindowState(Qt.WindowState.WindowFullScreen)
+        self.setCursor(Qt.CursorShape.CrossCursor)
+
+        self.label = QLabel(self)
+        self.label.setPixmap(pixmap)
+        self.label.setGeometry(0, 0, pixmap.width(), pixmap.height())
+        self.pixmap = pixmap
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            pos = event.position()
+            x = int(pos.x())
+            y = int(pos.y())
+
+            image = self.pixmap.toImage()
+            qcolor = image.pixelColor(x, y)
+            color = (qcolor.red(), qcolor.green(), qcolor.blue())
+
+            self.clicked_signal.emit(x, y, color)
+            self.close()
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key.Key_Escape:
+            self.close()
+
 class FishingUI(QWidget):
-    # Signal to update UI from other threads
     status_signal = pyqtSignal(str)
 
     def __init__(self):
@@ -17,6 +50,7 @@ class FishingUI(QWidget):
         self.config = load_config()
         self.macro = MacroController()
         self.picking_mode = None
+        self.overlay = None
 
         self.init_ui()
 
@@ -48,7 +82,7 @@ class FishingUI(QWidget):
         layout.addWidget(hk_group)
 
         # --- Calibration Group ---
-        cal_group = QGroupBox("Calibration")
+        cal_group = QGroupBox("Calibration (Screen will freeze)")
         cal_layout = QVBoxLayout()
 
         btn_excl = QPushButton("Set Exclamation (Pos & Color)")
@@ -117,87 +151,81 @@ class FishingUI(QWidget):
         save_config(self.config)
         self.macro.update_config()
 
-    # --- Picking Logic ---
+    def get_screenshot(self):
+        with mss.mss() as sct:
+            # Capture the whole primary monitor
+            monitor = sct.monitors[1]
+            sct_img = sct.grab(monitor)
+            # mss BGRA -> QImage ARGB32 (which is BGRA on little-endian)
+            img = QImage(sct_img.raw, sct_img.width, sct_img.height, QImage.Format.Format_ARGB32)
+            return QPixmap.fromImage(img)
+
     def start_picking(self, mode):
         self.picking_mode = mode
-        self.status_signal.emit(f"Picking {mode}... Click on screen!")
+        self.status_signal.emit(f"Picking {mode}... Click on the frozen screen!")
 
-        # Start mouse listener
-        self.click_count = 0
-        self.mouse_listener = mouse.Listener(on_click=self.on_screen_click)
-        self.mouse_listener.start()
+        # Take a screenshot to "freeze" the screen
+        pixmap = self.get_screenshot()
 
-    def on_screen_click(self, x, y, button, pressed):
-        if pressed and button == mouse.Button.left:
-            color = self.get_color_at(x, y)
+        # Show overlay
+        self.overlay = CalibrationOverlay(pixmap)
+        self.overlay.clicked_signal.connect(self.handle_picking_click)
+        self.overlay.show()
 
-            if self.picking_mode == "exclamation":
-                self.config['exclamation_pos'] = [int(x), int(y)]
-                self.config['exclamation_color'] = list(color)
-                self.status_signal.emit(f"Set Exclamation: {int(x)},{int(y)} Color: {color}")
-                self.finish_picking()
+    def handle_picking_click(self, x, y, color):
+        if self.picking_mode == "exclamation":
+            self.config['exclamation_pos'] = [x, y]
+            self.config['exclamation_color'] = list(color)
+            self.status_signal.emit(f"Set Exclamation: {x},{y} Color: {color}")
 
-            elif self.picking_mode == "bar_auto":
-                # Auto detect bar edges based on background color
-                self.status_signal.emit("Scanning for bar edges...")
-                y_int = int(y)
-                x_int = int(x)
-                bg_color = color
-                self.config['bar_bg_color'] = list(bg_color)
-                self.config['minigame_bar_y'] = y_int
+        elif self.picking_mode == "bar_auto":
+            self.status_signal.emit("Scanning for bar edges...")
+            bg_color = color
+            self.config['bar_bg_color'] = list(bg_color)
+            self.config['minigame_bar_y'] = y
 
-                # Scan left
-                x_start = x_int
-                while x_start > 0:
-                    c = self.get_color_at(x_start - 1, y_int)
-                    if not self.macro.is_color_match(c, bg_color, 15): # Strict tolerance for background
-                        break
-                    x_start -= 1
+            # Use the screenshot for scanning edges (faster than individual grabs)
+            image = self.overlay.pixmap.toImage()
 
-                # Scan right
-                x_end = x_int
-                # Assuming max screen width 4000
-                while x_end < 4000:
-                    c = self.get_color_at(x_end + 1, y_int)
-                    if not self.macro.is_color_match(c, bg_color, 15):
-                        break
-                    x_end += 1
+            # Scan left
+            x_start = x
+            while x_start > 0:
+                qc = image.pixelColor(x_start - 1, y)
+                c = (qc.red(), qc.green(), qc.blue())
+                if not self.macro.is_color_match(c, bg_color, 15):
+                    break
+                x_start -= 1
 
-                self.config['minigame_bar_x_start'] = x_start
-                self.config['minigame_bar_x_end'] = x_end
-                self.status_signal.emit(f"Detected Bar: {x_start} to {x_end} at Y={y_int}")
-                self.finish_picking()
+            # Scan right
+            x_end = x
+            while x_end < image.width() - 1:
+                qc = image.pixelColor(x_end + 1, y)
+                c = (qc.red(), qc.green(), qc.blue())
+                if not self.macro.is_color_match(c, bg_color, 15):
+                    break
+                x_end += 1
 
-            elif self.picking_mode == "fish":
-                self.config['fish_color'] = list(color)
-                self.status_signal.emit(f"Set Fish Color: {color}")
-                self.finish_picking()
+            self.config['minigame_bar_x_start'] = x_start
+            self.config['minigame_bar_x_end'] = x_end
+            self.status_signal.emit(f"Detected Bar: {x_start} to {x_end} at Y={y}")
 
-            elif self.picking_mode == "catcher":
-                self.config['catcher_color'] = list(color)
-                self.status_signal.emit(f"Set Catcher Color: {color}")
-                self.finish_picking()
+        elif self.picking_mode == "fish":
+            self.config['fish_color'] = list(color)
+            self.status_signal.emit(f"Set Fish Color: {color}")
 
-            elif self.picking_mode == "chest":
-                self.config['chest_color'] = list(color)
-                self.status_signal.emit(f"Set Chest Color: {color}")
-                self.finish_picking()
+        elif self.picking_mode == "catcher":
+            self.config['catcher_color'] = list(color)
+            self.status_signal.emit(f"Set Catcher Color: {color}")
 
-    def finish_picking(self):
-        self.mouse_listener.stop()
+        elif self.picking_mode == "chest":
+            self.config['chest_color'] = list(color)
+            self.status_signal.emit(f"Set Chest Color: {color}")
+
         self.picking_mode = None
         save_config(self.config)
         self.macro.update_config()
 
-    def get_color_at(self, x, y):
-        with mss.mss() as sct:
-            monitor = {"top": int(y), "left": int(x), "width": 1, "height": 1}
-            img = sct.grab(monitor)
-            b, g, r = img.pixel(0, 0)
-            return (r, g, b)
-
 if __name__ == "__main__":
-    from PyQt6.QtWidgets import QApplication
     app = QApplication(sys.argv)
     window = FishingUI()
     window.show()
