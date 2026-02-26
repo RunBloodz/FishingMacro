@@ -82,7 +82,7 @@ class FishingUI(QWidget):
 
         buttons = [
             ("Set Exclamation (Pos & Color)", "exclamation"),
-            ("Set Minigame Bar (Auto-Detect)", "bar_auto"),
+            ("Set Minigame Bar (Start & End)", "bar"),
             ("Set Fish Color", "fish"),
             ("Set Catcher Color", "catcher"),
             ("Set Chest Color", "chest")
@@ -137,6 +137,7 @@ class FishingUI(QWidget):
 
     def start_picking(self, mode):
         self.picking_mode = mode
+        self.click_count = 0
         self.status_signal.emit(f"Click on the screen to set {mode}...")
 
         self.overlay = CalibrationOverlay()
@@ -153,31 +154,20 @@ class FishingUI(QWidget):
             self.config['exclamation_color'] = list(color)
             self.status_signal.emit(f"Set Exclamation: {x},{y} Color: {color}")
 
-        elif self.picking_mode == "bar_auto":
-            self.status_signal.emit("Scanning for bar edges...")
-            bg_color = color
-            self.config['bar_bg_color'] = list(bg_color)
-            self.config['minigame_bar_y'] = y
-
-            # Scan left
-            x_start = x
-            while x_start > 0:
-                c = self.macro.get_pixel_color(x_start - 1, y)
-                if not self.macro.is_color_match(c, bg_color, 15):
-                    break
-                x_start -= 1
-
-            # Scan right
-            x_end = x
-            while x_end < 4000: # Max screen width
-                c = self.macro.get_pixel_color(x_end + 1, y)
-                if not self.macro.is_color_match(c, bg_color, 15):
-                    break
-                x_end += 1
-
-            self.config['minigame_bar_x_start'] = x_start
-            self.config['minigame_bar_x_end'] = x_end
-            self.status_signal.emit(f"Detected Bar: {x_start} to {x_end} at Y={y}")
+        elif self.picking_mode == "bar":
+            if self.click_count == 0:
+                self.config['minigame_bar_x_start'] = x
+                self.config['minigame_bar_y'] = y
+                self.click_count = 1
+                self.status_signal.emit("Click the END of the bar...")
+                # Re-show overlay for the second point
+                self.overlay = CalibrationOverlay()
+                self.overlay.clicked_signal.connect(self.handle_picking_click)
+                self.overlay.show()
+                return # Don't finish yet
+            else:
+                self.config['minigame_bar_x_end'] = x
+                self.status_signal.emit(f"Set Bar: {self.config['minigame_bar_x_start']} to {x} at Y={y}")
 
         elif self.picking_mode == "fish":
             self.config['fish_color'] = list(color)
