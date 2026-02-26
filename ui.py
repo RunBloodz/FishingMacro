@@ -39,22 +39,14 @@ class ResizableFrame(QWidget):
         self.old_pos = None
 
 class CalibrationOverlay(QWidget):
-    # Signal: x_center, y_center, (r, g, b), rect
-    confirmed_signal = pyqtSignal(int, int, tuple, QRect)
+    # Signal: x_center, y_center, rect
+    confirmed_signal = pyqtSignal(int, int, QRect)
 
-    def __init__(self, pixmap, initial_rect=None):
+    def __init__(self, initial_rect=None):
         super().__init__()
         self.setWindowFlags(Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.FramelessWindowHint)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setWindowState(Qt.WindowState.WindowFullScreen)
-
-        # Background screenshot
-        self.bg_label = QLabel(self)
-        self.bg_label.setPixmap(pixmap)
-        # Use logical screen geometry for the label
-        screen_geo = QApplication.primaryScreen().geometry()
-        self.bg_label.setGeometry(0, 0, screen_geo.width(), screen_geo.height())
-        self.bg_label.setScaledContents(True) # Ensure it fits logical space
-        self.pixmap = pixmap
 
         # Resizable Frame
         self.frame = ResizableFrame(self)
@@ -100,19 +92,7 @@ class CalibrationOverlay(QWidget):
         center_x = int(rect.center().x() * ratio)
         center_y = int(rect.center().y() * ratio)
 
-        image = self.pixmap.toImage()
-        # Sampling color from the pixmap (which is already at the correct resolution if grabbed via Qt)
-        # However, to be safe, we sample using the logical coordinates * ratio
-        sample_x = int(rect.center().x() * image.devicePixelRatio())
-        sample_y = int(rect.center().y() * image.devicePixelRatio())
-
-        safe_x = max(0, min(sample_x, image.width() - 1))
-        safe_y = max(0, min(sample_y, image.height() - 1))
-
-        qcolor = image.pixelColor(safe_x, safe_y)
-        color = (qcolor.red(), qcolor.green(), qcolor.blue())
-
-        self.confirmed_signal.emit(center_x, center_y, color, rect)
+        self.confirmed_signal.emit(center_x, center_y, rect)
         self.close()
 
     def keyPressEvent(self, event):
@@ -157,7 +137,7 @@ class FishingUI(QWidget):
         hk_group.setLayout(hk_layout)
         layout.addWidget(hk_group)
 
-        cal_group = QGroupBox("Calibration (Frozen screen + Frames)")
+        cal_group = QGroupBox("Calibration (Transparent Frames)")
         cal_layout = QVBoxLayout()
 
         buttons = [
@@ -212,19 +192,10 @@ class FishingUI(QWidget):
         save_config(self.config)
         self.macro.update_config()
 
-    def get_screenshot(self):
-        screen = QApplication.primaryScreen()
-        if not screen:
-            return QPixmap()
-        # grabWindow(0) handles High DPI scaling correctly on most systems
-        return screen.grabWindow(0)
-
     def start_picking(self, mode):
         self.picking_mode = mode
         self.status_signal.emit(f"Adjust frame for {mode}...")
 
-        pixmap = self.get_screenshot()
-        # High DPI fix: label should match logical screen size, not physical pixmap size
         screen_geo = QApplication.primaryScreen().geometry()
 
         initial_rect = QRect(screen_geo.width()//2 - 75, screen_geo.height()//2 - 25, 150, 50)
@@ -233,11 +204,14 @@ class FishingUI(QWidget):
         elif mode == "exclamation":
             initial_rect = QRect(screen_geo.width()//2 - 25, screen_geo.height()//2 - 100, 50, 50)
 
-        self.overlay = CalibrationOverlay(pixmap, initial_rect)
+        self.overlay = CalibrationOverlay(initial_rect)
         self.overlay.confirmed_signal.connect(self.handle_confirmed_calibration)
         self.overlay.show()
 
-    def handle_confirmed_calibration(self, x, y, color, rect):
+    def handle_confirmed_calibration(self, x, y, rect):
+        # Sample live color from the screen at center (x, y)
+        color = self.macro.get_pixel_color(x, y)
+
         # x, y here are already PHYSICAL coordinates for mss
         if self.picking_mode == "exclamation":
             self.config['exclamation_pos'] = [x, y]
@@ -250,26 +224,23 @@ class FishingUI(QWidget):
             self.config['bar_bg_color'] = list(bg_color)
             self.config['minigame_bar_y'] = y # Physical Y
 
-            image = self.overlay.pixmap.toImage()
             ratio = self.overlay.devicePixelRatioF()
-
-            # Scan using physical coordinates on the image
-            # rect is logical, convert to physical
             x_start_phys = int(rect.left() * ratio)
-            y_phys = y
+            x_end_phys = int(rect.right() * ratio)
 
+            # Scan using live colors from the screen
+            # Scan left from the left side of the frame
             x_start = x_start_phys
             while x_start > 0:
-                qc = image.pixelColor(x_start - 1, y_phys)
-                c = (qc.red(), qc.green(), qc.blue())
+                c = self.macro.get_pixel_color(x_start - 1, y)
                 if not self.macro.is_color_match(c, bg_color, 15):
                     break
                 x_start -= 1
 
-            x_end = int(rect.right() * ratio)
-            while x_end < image.width() - 1:
-                qc = image.pixelColor(x_end + 1, y_phys)
-                c = (qc.red(), qc.green(), qc.blue())
+            # Scan right from the right side of the frame
+            x_end = x_end_phys
+            while x_end < 4000: # Max screen width
+                c = self.macro.get_pixel_color(x_end + 1, y)
                 if not self.macro.is_color_match(c, bg_color, 15):
                     break
                 x_end += 1
