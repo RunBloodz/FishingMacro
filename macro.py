@@ -1,157 +1,188 @@
 import threading
 import time
-import random
-import pyautogui
-import keyboard
-import cv2
+import mss
 import numpy as np
-from PIL import ImageGrab
+from pynput import mouse, keyboard
+from config import load_config
 
 class MacroController:
     def __init__(self):
         self.running = False
         self.paused = False
+        self.config = load_config()
         self.thread = None
 
-        # ---------- FAILSAFES ----------
-        pyautogui.FAILSAFE = True
-        self.max_idle = 30
-        self.last_action = time.time()
+        self.mouse_ctrl = mouse.Controller()
+        self.kb_ctrl = keyboard.Controller()
 
-        # ---------- HOTKEYS ----------
-        keyboard.add_hotkey("f8", self.toggle_pause)
-        keyboard.add_hotkey("f9", self.stop)
+    def update_config(self):
+        self.config = load_config()
 
-        # ---------- STATS ----------
-        self.start_time = None
-        self.fish_caught = 0
-
-        # ---------- KEYS (CHANGE IF NEEDED) ----------
-        self.cast_key = "1"
-        self.reel_key = "2"
-        self.inventory_key = "i"
-
-        # ---------- DETECTION ----------
-        self.bobber_image = "assets/bobber.png"
-        self.inventory_full_image = "assets/inventory_full.png"
-        self.image_threshold = 0.75
-
-        # ---------- FISHING SPOTS ----------
-        self.spots = [
-            (960, 540),
-            (1020, 560),
-            (900, 520),
-        ]
-        self.current_spot = 0
-
-    # ================= CONTROL =================
     def start(self):
-        if self.running:
-            return
-        self.running = True
-        self.paused = False
-        self.start_time = time.time()
-        self.thread = threading.Thread(target=self.loop, daemon=True)
-        self.thread.start()
-        print("Macro started.")
+        if not self.running:
+            self.update_config()
+            self.running = True
+            self.paused = False
+            self.thread = threading.Thread(target=self.macro_loop, daemon=True)
+            self.thread.start()
+            print("Macro started")
 
     def stop(self):
-        print("Macro stopped.")
         self.running = False
+        print("Macro stopped")
 
     def toggle_pause(self):
         self.paused = not self.paused
-        print("Paused" if self.paused else "Resumed")
+        print(f"Macro {'paused' if self.paused else 'resumed'}")
 
-    # ================= MAIN LOOP =================
-    def loop(self):
+    def is_color_match(self, c1, c2, tolerance):
+        # c1 and c2 are (R, G, B)
+        return all(abs(c1[i] - c2[i]) <= tolerance for i in range(3))
+
+    def get_pixel_color(self, x, y):
+        try:
+            with mss.mss() as sct:
+                monitor = {"top": int(y), "left": int(x), "width": 1, "height": 1}
+                img = sct.grab(monitor)
+                # mss ScreenShot.pixel returns (B, G, R)
+                b, g, r = img.pixel(0, 0)
+                return (r, g, b)
+        except Exception as e:
+            print(f"Error getting pixel color: {e}")
+            return (0, 0, 0)
+
+    def macro_loop(self):
         while self.running:
             if self.paused:
-                time.sleep(0.2)
+                time.sleep(0.1)
                 continue
 
-            if time.time() - self.last_action > self.max_idle:
-                print("Failsafe: idle timeout.")
-                self.stop()
-                break
+            try:
+                # 1. Select Rod
+                print(f"Selecting rod (Key {self.config['rod_key']})...")
+                self.kb_ctrl.press(self.config['rod_key'])
+                self.kb_ctrl.release(self.config['rod_key'])
+                time.sleep(0.8)
 
-            if self.inventory_full():
-                print("Inventory full. Stopping.")
-                self.stop()
-                break
+                # 2. Cast
+                print("Casting rod...")
+                self.mouse_ctrl.click(mouse.Button.left)
+                time.sleep(0.8)
+                self.mouse_ctrl.click(mouse.Button.left)
+                time.sleep(1.0)
 
-            self.move_to_next_spot()
-            self.cast()
-            if self.wait_for_bite():
-                self.reel()
-                self.fish_caught += 1
-                self.print_stats()
+                # 3. Wait for Exclamation
+                print("Waiting for bite...")
+                bite_detected = False
+                start_wait = time.time()
+                while time.time() - start_wait < 30 and self.running and not self.paused:
+                    color = self.get_pixel_color(self.config['exclamation_pos'][0], self.config['exclamation_pos'][1])
+                    if self.is_color_match(color, self.config['exclamation_color'], self.config['tolerance']):
+                        bite_detected = True
+                        break
+                    time.sleep(0.05)
 
-            self.anti_afk()
-            self.random_delay(1.5, 3.0)
+                if bite_detected:
+                    print("Bite detected! Clicking...")
+                    self.mouse_ctrl.click(mouse.Button.left)
+                    # Wait for minigame UI to appear (user requested 3s delay)
+                    time.sleep(3.0)
 
-    # ================= FISHING =================
-    def cast(self):
-        print("Casting...")
-        pyautogui.press(self.cast_key)
-        self.last_action = time.time()
-        self.random_delay(0.8, 1.2)
+                    self.run_minigame()
+                else:
+                    print("No bite detected or timed out.")
 
-    def wait_for_bite(self):
-        print("Waiting for bite...")
-        start = time.time()
+                # 4. Reset
+                print("Resetting rod...")
+                self.kb_ctrl.press(self.config['reset_key'])
+                self.kb_ctrl.release(self.config['reset_key'])
+                time.sleep(0.5)
+                # Back to rod is handled at the start of loop
 
-        while time.time() - start < 20:
-            if not self.running or self.paused:
-                return False
+            except Exception as e:
+                print(f"Error in macro loop: {e}")
+                time.sleep(1)
 
-            if self.image_detect(self.bobber_image):
-                print("Bite detected!")
-                return True
+    def run_minigame(self):
+        print("Minigame started.")
+        y = int(self.config['minigame_bar_y'])
+        x_start = int(self.config['minigame_bar_x_start'])
+        x_end = int(self.config['minigame_bar_x_end'])
+        width = x_end - x_start
 
-            time.sleep(0.15)
+        if width <= 0:
+            print("Invalid minigame bar coordinates.")
+            return
 
-        print("No bite.")
-        return False
+        with mss.mss() as sct:
+            monitor = {"top": y, "left": x_start, "width": width, "height": 1}
 
-    def reel(self):
-        print("Reeling in!")
-        pyautogui.press(self.reel_key)
-        self.last_action = time.time()
-        self.random_delay(0.6, 1.0)
+            start_minigame = time.time()
+            mouse_down = False
 
-    # ================= DETECTION =================
-    def image_detect(self, image_path):
-        try:
-            screenshot = ImageGrab.grab()
-            screen = cv2.cvtColor(np.array(screenshot), cv2.COLOR_BGR2GRAY)
-            template = cv2.imread(image_path, 0)
+            while time.time() - start_minigame < 25 and self.running and not self.paused:
+                img = sct.grab(monitor)
+                # mss grab result is BGRA
+                data = np.array(img)
 
-            res = cv2.matchTemplate(screen, template, cv2.TM_CCOEFF_NORMED)
-            _, max_val, _, _ = cv2.minMaxLoc(res)
+                fish_x = -1
+                catcher_x = -1
+                chest_x = -1
 
-            return max_val >= self.image_threshold
-        except:
-            return False
+                # Scan for fish, catcher, and chest
+                for x in range(0, width, 3):
+                    b, g, r = data[0, x][:3]
+                    rgb = (r, g, b)
 
-    def inventory_full(self):
-        print("Checking inventory...")
-        pyautogui.press(self.inventory_key)
-        time.sleep(0.4)
+                    if fish_x == -1 and self.is_color_match(rgb, self.config['fish_color'], self.config['tolerance']):
+                        fish_x = x
 
-        full = self.image_detect(self.inventory_full_image)
+                    if catcher_x == -1 and self.is_color_match(rgb, self.config['catcher_color'], self.config['tolerance']):
+                        catcher_x = x
 
-        pyautogui.press(self.inventory_key)
-        time.sleep(0.2)
+                    if chest_x == -1 and self.is_color_match(rgb, self.config['chest_color'], self.config['tolerance']):
+                        chest_x = x
 
-        return full
+                    if fish_x != -1 and catcher_x != -1 and chest_x != -1:
+                        break
 
-    # ================= MOVEMENT =================
-    def move_to_next_spot(self):
-        x, y = self.spots[self.current_spot]
-        pyautogui.moveTo(x, y, duration=random.uniform(0.3, 0.6))
-        self.current_spot = (self.current_spot + 1) % len(self.spots)
+                # If catcher not found by color, it might be exactly over the background
+                # This could happen if the catcher is dark gray or has a similar color.
+                # But typically the catcher is a distinct object.
 
-    # ================= ANTI-AFK =================
-    def anti_afk(self):
-        if r
+                if fish_x == -1 and catcher_x == -1 and chest_x == -1:
+                    # Check if game ended (no relevant colors found at all)
+                    time.sleep(0.1)
+                    img_verify = sct.grab(monitor)
+                    data_v = np.array(img_verify)
+                    found = False
+                    for x in range(0, width, 5):
+                        b, g, r = data_v[0, x][:3]
+                        rgb_v = (r, g, b)
+                        if self.is_color_match(rgb_v, self.config['fish_color'], self.config['tolerance']) or \
+                           self.is_color_match(rgb_v, self.config['catcher_color'], self.config['tolerance']) or \
+                           self.is_color_match(rgb_v, self.config['chest_color'], self.config['tolerance']):
+                            found = True
+                            break
+                    if not found:
+                        print("Minigame ended.")
+                        break
+
+                # Priority Logic: Chest > Fish
+                target_x = chest_x if chest_x != -1 else fish_x
+
+                if target_x != -1 and catcher_x != -1:
+                    if target_x > catcher_x:
+                        if not mouse_down:
+                            self.mouse_ctrl.press(mouse.Button.left)
+                            mouse_down = True
+                    else:
+                        if mouse_down:
+                            self.mouse_ctrl.release(mouse.Button.left)
+                            mouse_down = False
+
+                time.sleep(0.01)
+
+            if mouse_down:
+                self.mouse_ctrl.release(mouse.Button.left)
+            print("Minigame loop finished.")

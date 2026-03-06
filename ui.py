@@ -1,101 +1,192 @@
-<<<<<<< HEAD
-from PyQt6.QtWidgets import QWidget, QPushButton, QVBoxLayout, QLabel
-from PyQt6.QtGui import QFont
+import sys
+import threading
+from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
+                             QLabel, QLineEdit, QFormLayout, QGroupBox, QMessageBox, QApplication)
+from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QPoint, QRect
+from PyQt6.QtGui import QPixmap, QImage, QCursor, QColor
+from pynput import keyboard
+import mss
+import numpy as np
+from config import load_config, save_config
 from macro import MacroController
-from PyQt6.QtWidgets import QProgressBar
-from updater import Updater
 
-class FishingUI(QWidget):
+class CalibrationOverlay(QWidget):
+    # Signal: x_phys, y_phys, ratio
+    clicked_signal = pyqtSignal(int, int, float)
+
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("FishingMacro ULTRA")
-        self.setFixedSize(420, 320)
-        self.setStyleSheet("""
-            QWidget {
-                background-color: #121212;
-                color: #ffffff;
-            }
-            QPushButton {
-                background-color: #1f1f1f;
-                border-radius: 10px;
-                padding: 12px;
-            }
-            QPushButton:hover {
-                background-color: #2a2a2a;
-            }
-=======
-from PyQt6.QtWidgets import (
-    QApplication, QWidget, QPushButton, QLabel,
-    QVBoxLayout, QHBoxLayout
-)
-from PyQt6.QtCore import Qt
-from macro import MacroController
-from updater import check_for_update
-import sys
+        self.setWindowFlags(Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.FramelessWindowHint)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setWindowState(Qt.WindowState.WindowFullScreen)
+        self.setCursor(Qt.CursorShape.CrossCursor)
 
-class FishingMacroUI:
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            pos = event.position()
+            ratio = self.devicePixelRatioF()
+
+            # Convert logical center to physical center for mss
+            center_x = int(pos.x() * ratio)
+            center_y = int(pos.y() * ratio)
+
+            self.clicked_signal.emit(center_x, center_y, ratio)
+            self.close()
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key.Key_Escape:
+            self.close()
+
+class FishingUI(QWidget):
+    status_signal = pyqtSignal(str)
+
     def __init__(self):
-        self.app = QApplication(sys.argv)
-        self.win = QWidget()
-        self.win.setWindowTitle("FishingMacro ULTRA")
-        self.win.resize(900, 500)
-
-        self.win.setStyleSheet("""
-            QWidget { background:#0f1117; color:#e5e7eb; }
-            QPushButton {
-                background:#1f2937;
-                border-radius:10px;
-                padding:12px;
-                font-size:14px;
-            }
-            QPushButton:hover { background:#374151; }
-            QLabel { font-size:16px; }
->>>>>>> 421cea7cdfa2bb317814615a282dcb5f05bed511
-        """)
-
+        super().__init__()
+        self.config = load_config()
         self.macro = MacroController()
+        self.picking_mode = None
+        self.overlay = None
 
+        self.init_ui()
+
+        # Hotkey listener
+        self.hk_listener = keyboard.GlobalHotKeys({
+            '<f2>': self.start_macro,
+            '<f3>': self.stop_macro
+        })
+        self.hk_listener.start()
+
+    def init_ui(self):
+        self.setWindowTitle("Blox Fruits Fishing Macro ULTRA")
+        self.setFixedWidth(400)
         layout = QVBoxLayout()
 
-<<<<<<< HEAD
-        title = QLabel("FishingMacro ULTRA")
-        title.setFont(QFont("Segoe UI", 20))
-        layout.addWidget(title)
+        # --- Status ---
+        self.status_label = QLabel("Status: Stopped")
+        self.status_label.setStyleSheet("font-weight: bold; color: red;")
+        layout.addWidget(self.status_label)
 
-        start = QPushButton("START")
-        stop = QPushButton("STOP")
+        # --- Hotkeys Group ---
+        hk_group = QGroupBox("Hotkeys & Keys")
+        hk_layout = QFormLayout()
+        self.rod_key_input = QLineEdit(self.config['rod_key'])
+        self.reset_key_input = QLineEdit(self.config['reset_key'])
+        hk_layout.addRow("Rod Key:", self.rod_key_input)
+        hk_layout.addRow("Reset Key:", self.reset_key_input)
+        hk_group.setLayout(hk_layout)
+        layout.addWidget(hk_group)
 
-        start.clicked.connect(self.macro.start)
-        stop.clicked.connect(self.macro.stop)
+        # --- Calibration Group ---
+        cal_group = QGroupBox("Calibration (Click on screen)")
+        cal_layout = QVBoxLayout()
 
-        layout.addWidget(start)
-        layout.addWidget(stop)
+        buttons = [
+            ("Set Exclamation (Pos & Color)", "exclamation"),
+            ("Set Minigame Bar (Start & End)", "bar"),
+            ("Set Fish Color", "fish"),
+            ("Set Catcher Color", "catcher"),
+            ("Set Chest Color", "chest")
+        ]
+        for text, mode in buttons:
+            btn = QPushButton(text)
+            btn.clicked.connect(lambda checked, m=mode: self.start_picking(m))
+            cal_layout.addWidget(btn)
+
+        cal_group.setLayout(cal_layout)
+        layout.addWidget(cal_group)
+
+        # --- Controls ---
+        ctrl_layout = QHBoxLayout()
+        self.start_btn = QPushButton("START (F2)")
+        self.start_btn.clicked.connect(self.start_macro)
+        self.start_btn.setStyleSheet("background-color: green; color: white;")
+
+        self.stop_btn = QPushButton("STOP (F3)")
+        self.stop_btn.clicked.connect(self.stop_macro)
+        self.stop_btn.setStyleSheet("background-color: red; color: white;")
+
+        ctrl_layout.addWidget(self.start_btn)
+        ctrl_layout.addWidget(self.stop_btn)
+        layout.addLayout(ctrl_layout)
+
+        save_btn = QPushButton("Save Settings")
+        save_btn.clicked.connect(self.save_settings)
+        layout.addWidget(save_btn)
 
         self.setLayout(layout)
-=======
-        title = QLabel("🎣 FishingMacro ULTRA")
-        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        title.setStyleSheet("font-size:26px;")
-        layout.addWidget(title)
+        self.status_signal.connect(self.update_status_label)
 
-        btns = QHBoxLayout()
+    def update_status_label(self, text):
+        self.status_label.setText(f"Status: {text}")
+        self.status_label.setStyleSheet(f"font-weight: bold; color: {'green' if 'Running' in text else 'red'};")
 
-        start = QPushButton("START (F2)")
-        stop = QPushButton("STOP (F3)")
-        update = QPushButton("CHECK UPDATE")
+    def start_macro(self):
+        self.save_settings()
+        self.macro.start()
+        self.status_signal.emit("Running")
 
-        start.clicked.connect(self.macro.start)
-        stop.clicked.connect(self.macro.stop)
-        update.clicked.connect(check_for_update)
+    def stop_macro(self):
+        self.macro.stop()
+        self.status_signal.emit("Stopped")
 
-        btns.addWidget(start)
-        btns.addWidget(stop)
-        btns.addWidget(update)
+    def save_settings(self):
+        self.config['rod_key'] = self.rod_key_input.text()
+        self.config['reset_key'] = self.reset_key_input.text()
+        save_config(self.config)
+        self.macro.update_config()
 
-        layout.addLayout(btns)
-        self.win.setLayout(layout)
+    def start_picking(self, mode):
+        self.picking_mode = mode
+        self.click_count = 0
+        self.status_signal.emit(f"Click on the screen to set {mode}...")
 
-    def run(self):
-        self.win.show()
-        sys.exit(self.app.exec())
->>>>>>> 421cea7cdfa2bb317814615a282dcb5f05bed511
+        self.overlay = CalibrationOverlay()
+        self.overlay.clicked_signal.connect(self.handle_picking_click)
+        self.overlay.show()
+
+    def handle_picking_click(self, x, y, ratio):
+        # Sample live color from the screen at center (x, y)
+        color = self.macro.get_pixel_color(x, y)
+
+        # x, y here are already PHYSICAL coordinates for mss
+        if self.picking_mode == "exclamation":
+            self.config['exclamation_pos'] = [x, y]
+            self.config['exclamation_color'] = list(color)
+            self.status_signal.emit(f"Set Exclamation: {x},{y} Color: {color}")
+
+        elif self.picking_mode == "bar":
+            if self.click_count == 0:
+                self.config['minigame_bar_x_start'] = x
+                self.config['minigame_bar_y'] = y
+                self.click_count = 1
+                self.status_signal.emit("Click the END of the bar...")
+                # Re-show overlay for the second point
+                self.overlay = CalibrationOverlay()
+                self.overlay.clicked_signal.connect(self.handle_picking_click)
+                self.overlay.show()
+                return # Don't finish yet
+            else:
+                self.config['minigame_bar_x_end'] = x
+                self.status_signal.emit(f"Set Bar: {self.config['minigame_bar_x_start']} to {x} at Y={y}")
+
+        elif self.picking_mode == "fish":
+            self.config['fish_color'] = list(color)
+            self.status_signal.emit(f"Set Fish Color: {color}")
+
+        elif self.picking_mode == "catcher":
+            self.config['catcher_color'] = list(color)
+            self.status_signal.emit(f"Set Catcher Color: {color}")
+
+        elif self.picking_mode == "chest":
+            self.config['chest_color'] = list(color)
+            self.status_signal.emit(f"Set Chest Color: {color}")
+
+        self.picking_mode = None
+        save_config(self.config)
+        self.macro.update_config()
+
+if __name__ == "__main__":
+    app = QApplication(sys.argv)
+    window = FishingUI()
+    window.show()
+    sys.exit(app.exec())
